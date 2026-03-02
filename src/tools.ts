@@ -218,7 +218,7 @@ export function registerTools(server: McpServer) {
         if (tagData) {
           // Build map of entry_id → tag names
           const entryTags: Record<string, string[]> = {};
-          for (const row of tagData as Array<{ entry_id: string; tags: { name: string } }>) {
+          for (const row of tagData as unknown as Array<{ entry_id: string; tags: { name: string } }>) {
             if (!entryTags[row.entry_id]) entryTags[row.entry_id] = [];
             entryTags[row.entry_id].push(row.tags.name);
           }
@@ -569,8 +569,8 @@ export function registerTools(server: McpServer) {
         .select("tags(name)")
         .eq("entry_id", entry_id);
 
-      const tagNames = (currentTags ?? []).map(
-        (row: { tags: { name: string } }) => row.tags.name
+      const tagNames = (currentTags as unknown as Array<{ tags: { name: string } }> ?? []).map(
+        (row) => row.tags.name
       );
 
       return {
