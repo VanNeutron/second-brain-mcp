@@ -218,9 +218,11 @@ export function registerTools(server: McpServer) {
         if (tagData) {
           // Build map of entry_id → tag names
           const entryTags: Record<string, string[]> = {};
-          for (const row of tagData as unknown as Array<{ entry_id: string; tags: { name: string } }>) {
-            if (!entryTags[row.entry_id]) entryTags[row.entry_id] = [];
-            entryTags[row.entry_id].push(row.tags.name);
+          for (const row of tagData as any[]) {
+            const entryId = row.entry_id as string;
+            const tagName = row.tags?.name ?? row.tags?.[0]?.name;
+            if (!entryTags[entryId]) entryTags[entryId] = [];
+            if (tagName) entryTags[entryId].push(tagName);
           }
 
           // Filter to entries that have ALL required tags
@@ -569,9 +571,9 @@ export function registerTools(server: McpServer) {
         .select("tags(name)")
         .eq("entry_id", entry_id);
 
-      const tagNames = (currentTags as unknown as Array<{ tags: { name: string } }> ?? []).map(
-        (row) => row.tags.name
-      );
+      const tagNames = ((currentTags ?? []) as any[]).map(
+        (row) => row.tags?.name ?? row.tags?.[0]?.name
+      ).filter(Boolean);
 
       return {
         content: [
