@@ -6,12 +6,15 @@ A personal knowledge base server built on the [Model Context Protocol (MCP)](htt
 
 The server exposes a set of MCP tools that let an AI assistant read and write to a Supabase-backed knowledge store. Each request is stateless — no sessions, no persistent connections.
 
-**Stack:** Node.js · TypeScript · Express · MCP SDK · Supabase · Zod
+Search uses **hybrid ranking** — full-text search and semantic vector search are combined using Reciprocal Rank Fusion (RRF), so queries match both exact keywords and conceptual meaning.
+
+**Stack:** Node.js · TypeScript · Express · MCP SDK · Supabase · pgvector · OpenAI · Zod
 
 ## Prerequisites
 
 - Node.js ≥ 20
 - A Supabase project with the required schema (see [Database Schema](#database-schema))
+- An OpenAI API key (used to generate embeddings for semantic search)
 
 ## Setup
 
@@ -22,18 +25,20 @@ The server exposes a set of MCP tools that let an AI assistant read and write to
    npm install
    ```
 
-2. Create a `.env` file (not committed):
-   ```env
-   SUPABASE_URL=https://your-project.supabase.co
-   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-   PORT=3000
-   ```
-
-3. Build and run:
+2. Build and run:
    ```bash
    npm run build
    npm start
    ```
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `SUPABASE_URL` | Your Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (from Project Settings → API) |
+| `OPENAI_API_KEY` | OpenAI API key for embedding generation |
+| `PORT` | Port to listen on (default: 3000) |
 
 ## Development
 
@@ -57,7 +62,7 @@ API keys are stored in Supabase as SHA-256 hashes. Each key has a name, permissi
 | Tool | Description |
 |------|-------------|
 | `brain_save` | Save a new entry with title, content, category, tags, keywords, and importance |
-| `brain_search` | Full-text search with filters for category, tags, keywords, importance, date range |
+| `brain_search` | Hybrid semantic + keyword search with filters for category, tags, keywords, importance, date range |
 | `brain_get` | Retrieve a single entry with full content, tags, and linked entries |
 | `brain_list_recent` | List recent entries, optionally filtered by category |
 | `brain_update` | Update fields on an existing entry (metadata is merged, not replaced) |
@@ -75,18 +80,28 @@ API keys are stored in Supabase as SHA-256 hashes. Each key has a name, permissi
 
 The server expects the following Supabase tables:
 
-- `entries` — the main knowledge store
+- `entries` — the main knowledge store, includes a `vector(1536)` embedding column
 - `categories` — pre-seeded categories (entries must reference an existing category by name)
 - `tags` / `entry_tags` — many-to-many tag relationships
 - `entry_links` — typed directional links between entries
 - `api_keys` — hashed API keys for authentication
 
-And the following Postgres functions (RPCs):
+Required Postgres extensions: `pgvector`
 
-- `search_entries` — full-text search with filters
+Required Postgres functions (RPCs):
+
+- `search_entries` — hybrid full-text + vector search with RRF ranking
 - `get_entry_full` — entry + tags + links in one call
 - `find_related_entries` — explicit + implicit similarity scoring
 - `list_categories_with_counts` — categories with entry counts
+
+## Backfilling Embeddings
+
+If you have existing entries without embeddings (e.g. after a fresh schema migration), generate them with:
+
+```bash
+SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... OPENAI_API_KEY=... npm run backfill
+```
 
 ## Deployment
 
@@ -97,6 +112,7 @@ docker build -t second-brain-mcp .
 docker run -p 3000:3000 \
   -e SUPABASE_URL=... \
   -e SUPABASE_SERVICE_ROLE_KEY=... \
+  -e OPENAI_API_KEY=... \
   second-brain-mcp
 ```
 
