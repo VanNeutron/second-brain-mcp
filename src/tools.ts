@@ -98,23 +98,24 @@ export function registerTools(server: McpServer) {
 
       // Handle tags if provided
       if (tags && tags.length > 0) {
-        for (const tagName of tags) {
-          const normalizedTag = tagName.toLowerCase().trim();
+        await Promise.all(
+          tags.map(async (tagName) => {
+            const normalizedTag = tagName.toLowerCase().trim();
 
-          // Upsert tag
-          const { data: tag } = await supabase
-            .from("tags")
-            .upsert({ name: normalizedTag }, { onConflict: "name" })
-            .select("id")
-            .single();
+            const { data: tag } = await supabase
+              .from("tags")
+              .upsert({ name: normalizedTag }, { onConflict: "name" })
+              .select("id")
+              .single();
 
-          if (tag) {
-            await supabase
-              .from("entry_tags")
-              .insert({ entry_id: entry.id, tag_id: tag.id })
-              .select();
-          }
-        }
+            if (tag) {
+              await supabase
+                .from("entry_tags")
+                .insert({ entry_id: entry.id, tag_id: tag.id })
+                .select();
+            }
+          })
+        );
       }
 
       return {
@@ -521,48 +522,70 @@ export function registerTools(server: McpServer) {
       remove: z.array(z.string()).optional().describe("Tags to remove"),
     },
     async ({ entry_id, add, remove }) => {
+      // Verify entry exists
+      const { data: entry, error: entryErr } = await supabase
+        .from("entries")
+        .select("id")
+        .eq("id", entry_id)
+        .single();
+
+      if (entryErr || !entry) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Entry not found: ${entry_id}`,
+            },
+          ],
+        };
+      }
+
       // Add tags
       if (add && add.length > 0) {
-        for (const tagName of add) {
-          const normalized = tagName.toLowerCase().trim();
+        await Promise.all(
+          add.map(async (tagName) => {
+            const normalized = tagName.toLowerCase().trim();
 
-          const { data: tag } = await supabase
-            .from("tags")
-            .upsert({ name: normalized }, { onConflict: "name" })
-            .select("id")
-            .single();
+            const { data: tag } = await supabase
+              .from("tags")
+              .upsert({ name: normalized }, { onConflict: "name" })
+              .select("id")
+              .single();
 
-          if (tag) {
-            await supabase
-              .from("entry_tags")
-              .upsert(
-                { entry_id, tag_id: tag.id },
-                { onConflict: "entry_id,tag_id" }
-              )
-              .select();
-          }
-        }
+            if (tag) {
+              await supabase
+                .from("entry_tags")
+                .upsert(
+                  { entry_id, tag_id: tag.id },
+                  { onConflict: "entry_id,tag_id" }
+                )
+                .select();
+            }
+          })
+        );
       }
 
       // Remove tags
       if (remove && remove.length > 0) {
-        for (const tagName of remove) {
-          const normalized = tagName.toLowerCase().trim();
+        await Promise.all(
+          remove.map(async (tagName) => {
+            const normalized = tagName.toLowerCase().trim();
 
-          const { data: tag } = await supabase
-            .from("tags")
-            .select("id")
-            .eq("name", normalized)
-            .single();
+            const { data: tag } = await supabase
+              .from("tags")
+              .select("id")
+              .eq("name", normalized)
+              .single();
 
-          if (tag) {
-            await supabase
-              .from("entry_tags")
-              .delete()
-              .eq("entry_id", entry_id)
-              .eq("tag_id", tag.id);
-          }
-        }
+            if (tag) {
+              await supabase
+                .from("entry_tags")
+                .delete()
+                .eq("entry_id", entry_id)
+                .eq("tag_id", tag.id);
+            }
+          })
+        );
       }
 
       // Return current tags

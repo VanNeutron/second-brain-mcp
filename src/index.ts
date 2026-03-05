@@ -20,8 +20,8 @@ app.get("/health", (_req: Request, res: Response) => {
 // MCP endpoint — POST only (stateless mode)
 app.post("/mcp", async (req: Request, res: Response) => {
   // Authenticate
-  const apiKey = await authenticateRequest(req.headers.authorization);
-  if (!apiKey) {
+  const authenticated = await authenticateRequest(req.headers.authorization);
+  if (!authenticated) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }

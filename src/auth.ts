@@ -37,7 +37,7 @@ export async function authenticateRequest(
     .from("api_keys")
     .update({ last_used_at: new Date().toISOString() })
     .eq("id", data.id)
-    .then();
+    .then(() => {}, () => {});
 
   return {
     id: data.id,
@@ -46,6 +46,3 @@ export async function authenticateRequest(
   };
 }
 
-export function hasPermission(apiKey: ApiKey, permission: string): boolean {
-  return apiKey.permissions.includes(permission);
-}
