@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { supabase } from "./supabase.js";
+import { buildEmbeddingText, generateEmbedding } from "./embeddings.js";
 
 // Valid relationship types for entry_links
 const RELATIONSHIP_TYPES = [
@@ -69,6 +70,10 @@ export function registerTools(server: McpServer) {
         };
       }
 
+      // Generate embedding
+      const embeddingText = buildEmbeddingText(title, summary, keywords, content);
+      const embedding = await generateEmbedding(embeddingText);
+
       // Insert entry
       const { data: entry, error: entryErr } = await supabase
         .from("entries")
@@ -81,6 +86,7 @@ export function registerTools(server: McpServer) {
           keywords: keywords ?? [],
           importance: importance ?? 3,
           metadata: metadata ?? {},
+          embedding: embedding ? `[${embedding.join(",")}]` : null,
         })
         .select("id, title, created_at")
         .single();
@@ -177,8 +183,14 @@ export function registerTools(server: McpServer) {
         .describe("Max results (default: 10, max: 50)"),
     },
     async ({ query, category, tags, keywords, importance_min, source, after, before, limit }) => {
+      const queryEmbedding = await generateEmbedding(query);
+      const queryEmbeddingParam = queryEmbedding
+        ? `[${queryEmbedding.join(",")}]`
+        : `[${new Array(1536).fill(0).join(",")}]`;
+
       const { data, error } = await supabase.rpc("search_entries", {
         search_query: query,
+        query_embedding: queryEmbeddingParam,
         filter_category: category ?? null,
         filter_source: source ?? null,
         min_importance: importance_min ?? null,
@@ -419,18 +431,37 @@ export function registerTools(server: McpServer) {
         updates.category_id = cat.id;
       }
 
-      if (metadata !== undefined) {
-        // Fetch existing metadata and merge
+      const needsEmbedding = title !== undefined || content !== undefined || summary !== undefined;
+      const needsFetch = needsEmbedding || metadata !== undefined;
+
+      if (needsFetch) {
         const { data: existing } = await supabase
           .from("entries")
-          .select("metadata")
+          .select("title, summary, keywords, content, metadata")
           .eq("id", id)
           .single();
 
-        updates.metadata = {
-          ...((existing?.metadata as Record<string, unknown>) ?? {}),
-          ...metadata,
-        };
+        if (existing) {
+          if (metadata !== undefined) {
+            updates.metadata = {
+              ...((existing.metadata as Record<string, unknown>) ?? {}),
+              ...metadata,
+            };
+          }
+
+          if (needsEmbedding) {
+            const embeddingText = buildEmbeddingText(
+              title ?? existing.title,
+              summary ?? existing.summary,
+              keywords ?? (existing.keywords as string[]),
+              content ?? existing.content
+            );
+            const embedding = await generateEmbedding(embeddingText);
+            if (embedding) {
+              updates.embedding = `[${embedding.join(",")}]`;
+            }
+          }
+        }
       }
 
       if (Object.keys(updates).length === 0) {
