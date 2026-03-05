@@ -1,4 +1,3 @@
-import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
 import { buildEmbeddingText, generateEmbedding } from "../src/embeddings.js";
 
